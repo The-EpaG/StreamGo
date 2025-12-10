@@ -1,1 +1,132 @@
+
 # StreamGo
+
+StreamGo is a simple Go library that emulates the logic of Dart's Streams, providing a convenient way to handle sequences of asynchronous events.
+
+## Features
+
+-   **Generic Streams**: Create streams of any data type using Go generics.
+-   **Error Handling**: Propagate and handle errors within the stream.
+-   **Subscription Management**: Cancel subscriptions to stop listening for events.
+-   **Backpressure Handling**: Basic backpressure handling to prevent slow subscribers from blocking the entire stream.
+
+## Installation
+
+To use StreamGo in your project, you can use `go get`:
+
+```bash
+go get github.com/The-EpaG/StreamGo
+```
+
+## Usage
+
+Here is a simple example of how to use StreamGo:
+
+```go
+package main
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/The-EpaG/StreamGo/pkg/streamgo"
+)
+
+func main() {
+	// 1. Create a new StreamController
+	controller := streamgo.NewStreamController[int]()
+
+	// 2. Get a Stream from the controller
+	stream := controller.Stream()
+
+	// 3. Listen to the stream
+	subscription := stream.Listen(
+		func(data int) {
+			fmt.Printf("Received data: %d\n", data)
+		},
+		func(err error) {
+			fmt.Printf("Received error: %v\n", err)
+		},
+	)
+
+	// 4. Add data and errors to the stream
+	controller.Add(1)
+	controller.Add(2)
+	controller.AddError(fmt.Errorf("something went wrong"))
+	controller.Add(3)
+
+	// 5. Close the stream when you're done
+	controller.Close()
+
+	// You can also cancel a subscription
+	subscription.Cancel()
+}
+```
+
+### Example with a custom struct
+
+```go
+package main
+
+import (
+	"fmt"
+
+	"github.com/The-EpaG/StreamGo/pkg/streamgo"
+)
+
+type UserMetric struct {
+	UserID string
+	Value  float64
+	Event  string
+}
+
+func main() {
+	fmt.Println("--- Stream of Structs (UserMetric) ---")
+	metricController := streamgo.NewStreamController[UserMetric]()
+	metricStream := metricController.Stream()
+
+	metricStream.Listen(
+		func(metric UserMetric) { // T is UserMetric
+			fmt.Printf("   [METRIC Listener] Received metric: %s for User %s\n", metric.Event, metric.UserID)
+		},
+		func(err error) { // onError
+			fmt.Printf("   [METRIC Listener] 🚨 RECEIVED ERROR: %s\n", err.Error())
+		},
+	)
+
+	metricController.Add(UserMetric{UserID: "A101", Value: 5.4, Event: "Login"})
+	metricController.Add(UserMetric{UserID: "B202", Value: 12.1, Event: "Logout"})
+	metricController.AddError(fmt.Errorf("critical metric error"))
+	metricController.Close()
+}
+```
+
+## API Overview
+
+### `StreamController[T]`
+
+The `StreamController` is the main entry point for creating and managing streams.
+
+-   `NewStreamController[T]() *StreamController[T]`: Creates a new stream controller.
+-   `Stream() *Stream[T]`: Returns a new stream associated with the controller.
+-   `Add(data T)`: Adds data to the stream.
+-   `AddError(err error)`: Adds an error to the stream.
+-   `Close()`: Closes the stream and waits for all listeners to finish.
+-   `ForceClose()`: Closes the stream without waiting for listeners.
+-   `Wait()`: Waits for all listeners to finish.
+
+### `Stream[T]`
+
+The `Stream` represents a sequence of asynchronous events.
+
+-   `Listen(onData func(T), onError func(error)) *StreamSubscription`: Registers a listener for data and error events.
+
+### `StreamSubscription`
+
+The `StreamSubscription` represents a subscription to a stream.
+
+-   `Cancel()`: Cancels the subscription.
+
+## License
+
+This project is licensed under the GNU3 License - see the [LICENSE](LICENSE) file for details.
