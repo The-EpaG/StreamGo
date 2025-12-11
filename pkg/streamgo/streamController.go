@@ -50,24 +50,14 @@ func (c *StreamController[T]) run() {
 			select {
 			case event := <-c.input:
 				c.mu.Lock()
-				// Snapshot subscribers to release lock during blocking send?
-				// NO. If we release lock, removeSubscriber might happen concurrently.
-				// However, blocking with lock held prevents new subscribers from joining (Add/Remove blocked).
-				// But blocking with lock held is safer for list integrity.
-				// BUT if we block, Add() call at source is blocked. That's fine.
-				// Wait, if we hold lock, removeSubscriber cannot acquire lock.
-				// If removeSubscriber cannot acquire lock, it cannot close 'quit'.
-				// If 'quit' is not closed, we deadlock here waiting for 'ch' which is full,
-				// and 'removeSubscriber' waits for us to release lock.
-				// **DEADLOCK DANGER**.
 
-				// SOLUTION: Copy subscribers and release lock.
+				// Snapshot subscribers to release lock.
+				// This avoids deadlocks where removeSubscriber awaits the lock held here.
 				currentSubs := make([]*Subscriber[T], len(c.subs))
 				copy(currentSubs, c.subs)
 				c.mu.Unlock()
 
 				for _, sub := range currentSubs {
-					// **BACKPRESSURE HANDLING (BLOCKING):**
 					// We block until the subscriber accepts the event OR cancels.
 					select {
 					case sub.ch <- event:
@@ -197,9 +187,8 @@ func (c *StreamController[T]) removeSubscriber(sub *Subscriber[T]) {
 	for i, s := range c.subs {
 		if s == sub {
 			c.subs = append(c.subs[:i], c.subs[i+1:]...)
-			// close(s.ch) // DO NOT Close the data channel here. It causes a race with the run loop sending to it.
-			// The run loop handles stale subscribers via the 'quit' channel.
-			// The listener exits via streamSub.Done checks.
+			// Do not close data channel here to avoid race with run loop.
+			// Run loop handles stale subscribers via 'quit' channel.
 			break
 		}
 	}
